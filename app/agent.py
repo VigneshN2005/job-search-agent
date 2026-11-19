@@ -23,7 +23,10 @@ Rules:
 - When the user states something lasting about themselves (skills, preferred location, remote, seniority,
   salary floor, things to avoid), call save_preference for each item, then continue with the search.
 - If the request is too vague to search (for example just "hi"), ask one short question instead of searching.
-- If nothing matches, say so plainly and suggest how to widen the search.
+- Search once with a descriptive query before trying narrower variations.
+- Show the closest real matches even when none is perfect, and say what differs (level, location, stack).
+  Internships, working-student and trainee roles count as junior. Only say nothing fits when the results are
+  clearly unrelated to the request.
 - Keep answers short and concrete.
 
 Known preferences for this user: {prefs}"""
@@ -33,7 +36,9 @@ FINAL_PROMPT = """Write your final answer to the user's last message as a JSON o
 
 - "message": 1-3 short sentences addressed to the user. Do not list the jobs in it.
 - "picks": up to 5 jobs, best first, chosen ONLY from these ids returned by tools: {ids}.
-  "why" is one sentence linking the job to what the user asked. Use [] if nothing fits or no search was needed.
+  Prefer showing the closest matches over showing nothing: if a job fits only partly, still include it and
+  mention the gap in "why". Use [] only when no search was run or every result is clearly unrelated.
+  "why" is one sentence linking the job to what the user asked.
 - "follow_up": one short question that would improve the next search, or null.
 Return only the JSON object."""
 
