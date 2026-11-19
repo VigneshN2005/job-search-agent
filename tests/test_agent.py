@@ -133,4 +133,36 @@ def test_final_step_sends_no_raw_tool_messages():
     agent.run(str(uuid.uuid4()), "python jobs")
     last = llm.requests[-1]["messages"]
     assert all(m["role"] != "tool" and "tool_calls" not in m for m in last)
-    assert any("Result of search_jobs" in m["content"] for m in last)
+    assert any("Candidate jobs" in m["content"] and "Backend Engineer" in m["content"] for m in last)
+
+
+def test_answer_inside_tool_loop_skips_extra_call():
+    agent, _, llm = new_agent(
+        [
+            tool_call("search_jobs", {"query": "react frontend"}),
+            final("One React role.", [(4, "React and TypeScript")]),
+        ]
+    )
+    res = agent.run(str(uuid.uuid4()), "react jobs")
+    assert [j.id for j in res.jobs] == [4]
+    assert len(llm.requests) == 2
+
+
+def test_clarifying_question_without_search_is_accepted():
+    agent, _, llm = new_agent([final("Happy to help! What kind of role are you after?", [], "Which role?")])
+    res = agent.run(str(uuid.uuid4()), "hi")
+    assert res.jobs == [] and res.reply.follow_up == "Which role?"
+    assert len(llm.requests) == 1
+
+
+def test_empty_picks_after_search_triggers_compact_final_step():
+    agent, _, llm = new_agent(
+        [
+            tool_call("search_jobs", {"query": "python"}),
+            final("Nothing matched.", []),
+            final("Closest match.", [(2, "Python, junior")]),
+        ]
+    )
+    res = agent.run(str(uuid.uuid4()), "junior python jobs")
+    assert [j.id for j in res.jobs] == [2]
+    assert llm.requests[-1]["json_mode"] is True

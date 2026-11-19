@@ -143,7 +143,7 @@ def write_report(summary: dict[str, Any], results: list[dict[str, Any]], path: P
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the agent against the evaluation cases.")
     parser.add_argument("--only", nargs="*", help="case ids to run")
-    parser.add_argument("--pause", type=float, default=2.0, help="seconds between cases (rate limits)")
+    parser.add_argument("--pause", type=float, default=20.0, help="seconds between cases (rate limits)")
     args = parser.parse_args(argv)
 
     s = get_settings()
