@@ -29,10 +29,23 @@ def test_search_records_seen_jobs_and_trace():
     assert tb.trace[0].results == 1 and tb.trace[0].ok
 
 
-def test_search_relaxes_impossible_constraints():
+def test_skills_and_keyword_rank_but_do_not_filter():
     tb = box()
-    out = tb.run("search_jobs", {"query": "python", "skills": ["rust"]})
-    assert out.get("note") and out["jobs"]
+    out = tb.run("search_jobs", {"query": "developer", "skills": ["rust"], "keyword": "backend"})
+    assert {j["id"] for j in out["jobs"]} == {1, 2}
+    assert tb.repo.last_filters.skills == [] and tb.repo.last_filters.keyword is None
+
+
+def test_salary_floor_is_relaxed_when_nothing_matches():
+    tb = box()
+    out = tb.run("search_jobs", {"query": "developer", "min_salary": 500000})
+    assert out["note"] and out["jobs"]
+
+
+def test_skills_boost_matching_jobs():
+    tb = box()
+    out = tb.run("search_jobs", {"query": "developer", "skills": ["java"]})
+    assert out["jobs"][0]["id"] == 2
 
 
 def test_saved_remote_preference_becomes_a_filter():

@@ -15,7 +15,8 @@ from app.repository import Repository
 TOOL_DESCRIPTIONS = {
     "search_jobs": (
         "Semantic search over the job index. Use it whenever the user describes what they want in words. "
-        "Put hard constraints (location, remote, job type, salary, skills) in the filter fields."
+        "location, remote, job_type, min_salary and posted_within_days are strict filters; skills and keyword "
+        "only boost ranking. Prefer one good search with a descriptive query over several narrow ones."
     ),
     "filter_jobs": (
         "List jobs by exact filters only, without a text query. Use it for requests like 'newest remote "
@@ -103,18 +104,20 @@ class ToolBox:
 
     def search_jobs(self, args: SearchJobsArgs) -> dict[str, Any]:
         args = self._with_pref_filters(args)
-        text = args.query
-        if args.skills:
-            text += " | skills: " + ", ".join(args.skills)
+        soft = [*args.skills, *([args.keyword] if args.keyword else [])]
+        text = args.query + (" | " + ", ".join(soft) if soft else "")
+        hard = args.model_copy(update={"skills": [], "keyword": None})
         vector = self.embedder.embed([text], "RETRIEVAL_QUERY")[0]
-        candidates = self.repo.semantic_candidates(vector, args, 40)
-        if not candidates and (args.skills or args.min_salary or args.location):
-            relaxed = args.model_copy(update={"skills": [], "min_salary": None})
-            candidates = self.repo.semantic_candidates(vector, relaxed, 40)
-            note = "no exact matches, constraints on skills/salary were relaxed"
-        else:
-            note = ""
-        ranked = rerank(candidates, args.query, self.prefs, args.limit)
+        candidates = self.repo.semantic_candidates(vector, hard, 40)
+        note = ""
+        if not candidates and hard.min_salary:
+            candidates = self.repo.semantic_candidates(vector, hard.model_copy(update={"min_salary": None}), 40)
+            note = "no jobs met the salary floor, showing the closest matches without it"
+        prefs = dict(self.prefs)
+        if args.skills:
+            merged = {s.strip().lower() for s in (prefs.get("skills", "") + "," + ",".join(args.skills)).split(",")}
+            prefs["skills"] = ", ".join(sorted(m for m in merged if m))
+        ranked = rerank(candidates, text, prefs, args.limit)
         out: dict[str, Any] = {"jobs": self._remember(ranked), "total_candidates": len(candidates)}
         if note:
             out["note"] = note
