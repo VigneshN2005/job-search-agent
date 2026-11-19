@@ -1,0 +1,11 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.vercel/
+evals/results/*.json
+_to_delete/
+_local/

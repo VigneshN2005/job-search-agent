@@ -1,0 +1,22 @@
+[
+  {"id": "remote-python-backend", "turns": ["Find me remote backend jobs using Python"], "expect": {"remote": true, "any_terms": ["python", "backend", "django", "fastapi", "flask"], "min_picks": 1}},
+  {"id": "data-engineer", "turns": ["data engineering roles with airflow or spark"], "expect": {"any_terms": ["data", "airflow", "spark", "etl", "pipeline"], "min_picks": 1}},
+  {"id": "frontend-react", "turns": ["frontend developer jobs with React"], "expect": {"any_terms": ["react", "frontend", "front-end", "javascript", "typescript"], "min_picks": 1}},
+  {"id": "devops", "turns": ["DevOps or SRE positions, Kubernetes preferred"], "expect": {"any_terms": ["devops", "sre", "kubernetes", "reliability", "platform", "infrastructure", "cloud"], "min_picks": 1}},
+  {"id": "ml-engineer", "turns": ["machine learning engineer jobs"], "expect": {"any_terms": ["machine learning", "ml", "ai", "data scientist", "llm", "deep learning"], "min_picks": 1}},
+  {"id": "berlin-onsite", "turns": ["software developer jobs in Berlin, not remote"], "expect": {"remote": false, "location_any": ["berlin"], "min_picks": 1}},
+  {"id": "germany", "turns": ["any developer job in Germany"], "expect": {"location_any": ["germany", "berlin", "munich", "hamburg", "frankfurt", "köln", "cologne", "stuttgart", "düsseldorf", "leipzig", "deutschland", "worldwide", "anywhere"], "min_picks": 1}},
+  {"id": "internship", "turns": ["internships or working student roles in software"], "expect": {"any_terms": ["intern", "werkstudent", "working student", "student", "trainee", "junior"], "min_picks": 1}},
+  {"id": "qa", "turns": ["QA or test automation jobs"], "expect": {"any_terms": ["qa", "test", "quality", "automation", "sdet"], "min_picks": 1}},
+  {"id": "product-manager", "turns": ["product manager roles"], "expect": {"any_terms": ["product"], "min_picks": 1}},
+  {"id": "typo", "turns": ["remote pyhton develper jobs"], "expect": {"remote": true, "any_terms": ["python", "developer", "engineer", "backend"], "min_picks": 1}},
+  {"id": "vague", "turns": ["hi"], "expect": {"max_picks": 0, "follow_up": true}},
+  {"id": "impossible", "turns": ["COBOL mainframe jobs on the moon paying 10 million"], "expect": {"no_hallucination": true}},
+  {"id": "memory-skills", "turns": ["I'm a junior developer, I know Python and SQL and I only want remote work", "what do you have for me?"], "expect": {"remote": true, "saved_prefs": ["remote", "skills"], "min_picks": 1}},
+  {"id": "memory-avoid", "turns": ["I don't want anything in crypto or web3", "show me backend engineering jobs"], "expect": {"saved_prefs": ["avoid"], "none_terms": ["crypto", "web3", "blockchain"], "min_picks": 1}},
+  {"id": "follow-up-detail", "turns": ["remote golang jobs", "tell me more about the first one"], "expect": {"tools_any": ["get_job_details"]}},
+  {"id": "refine", "turns": ["javascript jobs", "only remote ones please"], "expect": {"remote": true, "min_picks": 1}},
+  {"id": "newest", "turns": ["what are the newest remote jobs posted this week?"], "expect": {"remote": true, "tools_any": ["filter_jobs", "search_jobs"], "min_picks": 1}},
+  {"id": "security", "turns": ["cybersecurity or application security roles"], "expect": {"any_terms": ["security", "secops", "appsec", "cyber", "penetration"], "min_picks": 1}},
+  {"id": "mobile", "turns": ["iOS or Android developer jobs"], "expect": {"any_terms": ["ios", "android", "mobile", "swift", "kotlin", "flutter", "react native"], "min_picks": 1}}
+]

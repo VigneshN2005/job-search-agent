@@ -1,0 +1,38 @@
+name: Ingest jobs
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      prune_days:
+        description: "Remove postings older than N days (0 keeps everything)"
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Fetch, store and embed postings
+        run: |
+          set -o pipefail
+          python -m ingest.fetch_jobs --prune-days "${{ github.event.inputs.prune_days || '60' }}" | tee ingest.log
+      - name: Summary
+        if: always()
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -20 ingest.log >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

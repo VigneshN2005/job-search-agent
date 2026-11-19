@@ -1,0 +1,12 @@
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101", "S608", "B008", "UP007", "UP045"]
+
+[lint.per-file-ignores]
+"api/index.py" = ["E402"]
+"tests/*" = ["S"]
+"ingest/*" = ["S310"]
+"app/http.py" = ["S310"]
