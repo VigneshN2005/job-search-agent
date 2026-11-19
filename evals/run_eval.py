@@ -49,7 +49,8 @@ def evaluate(case: dict[str, Any], agent: Agent, repo: PostgresRepository) -> di
         for turn in case["turns"]:
             responses.append(agent.run(session, turn))
     except LLMError as exc:
-        return {"id": case["id"], "error": str(exc)[:200], "passed": False}
+        text = str(exc)
+        return {"id": case["id"], "error": text[:200], "passed": False, "rate_limited": "429" in text}
     latency = (time.perf_counter() - started) / len(case["turns"])
 
     last = responses[-1]
@@ -101,10 +102,13 @@ def evaluate(case: dict[str, Any], agent: Agent, repo: PostgresRepository) -> di
 def summarise(results: list[dict[str, Any]]) -> dict[str, Any]:
     ok = [r for r in results if "error" not in r]
     precisions = [r["precision"] for r in ok if r.get("precision") is not None]
+    limited = sum(1 for r in results if r.get("rate_limited"))
     return {
         "cases": len(results),
+        "completed": len(ok),
         "passed": sum(r["passed"] for r in results),
-        "errors": len(results) - len(ok),
+        "rate_limited": limited,
+        "errors": len(results) - len(ok) - limited,
         "mean_precision": round(statistics.mean(precisions), 3) if precisions else None,
         "fabricated_jobs_shown": sum(len(r["fabricated_in_output"]) for r in ok),
         "hallucinated_picks_blocked": sum(r["dropped_hallucinations"] for r in ok),
@@ -121,6 +125,9 @@ def write_report(summary: dict[str, Any], results: list[dict[str, Any]], path: P
         "| Metric | Value |",
         "|---|---|",
         f"| Cases passed | {summary['passed']} / {summary['cases']} |",
+        f"| Completed cases that passed | {summary['passed']} / {summary['completed']} |",
+        f"| Not scored: provider rate limit (HTTP 429) | {summary['rate_limited']} |",
+        f"| Other errors | {summary['errors']} |",
         f"| Mean precision of recommended jobs | {summary['mean_precision']} |",
         f"| Fabricated jobs shown to the user | {summary['fabricated_jobs_shown']} |",
         f"| Hallucinated picks caught and removed | {summary['hallucinated_picks_blocked']} |",
@@ -131,7 +138,8 @@ def write_report(summary: dict[str, Any], results: list[dict[str, Any]], path: P
     ]
     for r in results:
         if "error" in r:
-            lines.append(f"| {r['id']} | error | - | - | {r['error'][:80]} |")
+            label = "rate limited" if r.get("rate_limited") else "error"
+            lines.append(f"| {r['id']} | {label} | - | - | {r['error'][:80]} |")
             continue
         failed = [k for k, v in r["checks"].items() if not v]
         prec = "-" if r["precision"] is None else f"{r['precision']:.2f}"

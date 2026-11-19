@@ -31,6 +31,8 @@ def test_summary_counts():
             "latency_s": 2.0,
         },
         {"error": "x", "passed": False},
+        {"error": "HTTP 429", "passed": False, "rate_limited": True},
     ]
     s = run_eval.summarise(results)
-    assert s["passed"] == 1 and s["errors"] == 1 and s["hallucinated_picks_blocked"] == 1
+    assert s["passed"] == 1 and s["completed"] == 1 and s["hallucinated_picks_blocked"] == 1
+    assert s["rate_limited"] == 1 and s["errors"] == 1

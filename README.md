@@ -8,6 +8,19 @@ for you, and only ever recommends jobs that actually came back from a search.
 
 ---
 
+**Live:** https://job-search-agent-teal-tau.vercel.app
+
+## Results
+
+Live evaluation over 20 scripted conversations, run twice against the deployed system ([details](evals/RESULTS.md)):
+
+| | |
+|---|---|
+| Completed conversations that passed | **35 / 35** |
+| Precision of recommended jobs | **1.00** |
+| Fabricated jobs shown to users | **0** |
+| Mean latency per turn | ~9 s on Groq's free tier |
+
 ## What it does
 
 | | |
@@ -19,7 +32,8 @@ for you, and only ever recommends jobs that actually came back from a search.
 | **Personalised ranking** | Candidates are re-ranked on vector similarity, keyword overlap, saved preferences (skills, seniority, avoid list) and recency, then de-duplicated. |
 | **Structured, grounded output** | The final answer is JSON validated against a Pydantic schema. Any recommended job id that was not returned by a tool in that turn is dropped before the user sees it. Invalid JSON is retried once. |
 | **Evaluation** | `evals/` runs 20 scripted conversations against the live system and reports precision, grounding, memory and tool use. |
-| **Real data** | Postings are pulled from the public Remotive and Arbeitnow job APIs, cleaned, de-duplicated and embedded. |
+| **Real data** | Postings are pulled from the public Remotive and Arbeitnow job APIs, filtered to tech roles, cleaned, de-duplicated and embedded. A scheduled GitHub Action refreshes the index every day. |
+| **Resilience** | Rate-limit waits, same-model retry on malformed tool calls, fallback across four Groq models, and an answer built from the jobs already found if every model is busy. |
 
 ## How a turn works
 
@@ -85,7 +99,7 @@ python -m venv .venv
 .venv\Scripts\activate            # macOS / Linux: source .venv/bin/activate
 pip install -r requirements-dev.txt
 
-python -m ingest.fetch_jobs       # fetch, store and embed real postings
+python -m ingest.fetch_jobs       # fetch, store and embed real postings (paced for the Gemini free tier)
 uvicorn app.main:app --reload     # open http://localhost:8000
 ```
 
@@ -105,6 +119,16 @@ The evaluation checks, for every case:
 - **precision**: share of recommended jobs that satisfy the request (remote, location, topic, avoided terms)
 - **memory**: preferences stated in an earlier turn are saved and applied later
 - **behaviour**: vague messages get a clarifying question instead of a random search, follow-ups use `get_job_details`
+
+## Automation
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `CI/CD` | push, pull request | ruff, pytest, pip-audit, Gitleaks; deploys to Vercel when deploy secrets are set |
+| `Ingest jobs` | daily 02:30 UTC, manual | fetches new postings, prunes old ones, embeds only what changed |
+| `Evaluate agent` | manual | runs the 20 live conversations and publishes the report |
+
+The three workflows read `DATABASE_URL`, `GROQ_API_KEY` and `GEMINI_API_KEY` from repository secrets.
 
 ## Deploy (Vercel + GitHub Actions)
 
