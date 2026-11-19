@@ -4,6 +4,7 @@ from ingest.normalize import (
     from_arbeitnow,
     from_remotive,
     html_to_text,
+    is_tech_role,
     is_valid,
     parse_salary,
 )
@@ -79,3 +80,11 @@ def test_embedding_text_skips_empty_fields():
     text = embedding_text({"title": "QA Engineer", "company": "Zen", "tags": [], "description": "Test things"})
     assert text.startswith("QA Engineer\nCompany: Zen")
     assert "Tags:" not in text
+
+
+def test_tech_role_filter():
+    assert is_tech_role({"title": "Senior Backend Developer", "tags": []})
+    assert is_tech_role({"title": "Werkstudent IT-Support", "tags": []})
+    assert is_tech_role({"title": "Sachbearbeiter", "tags": ["data analysis"]})
+    assert not is_tech_role({"title": "Verkäufer im Einzelhandel", "tags": ["retail"]})
+    assert not is_tech_role({"title": "Pflegefachkraft", "tags": []})

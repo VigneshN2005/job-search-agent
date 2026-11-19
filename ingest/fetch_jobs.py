@@ -6,10 +6,10 @@ import time
 from typing import Any
 
 from app.config import get_settings
-from app.embeddings import GeminiEmbedder
+from app.embeddings import GeminiEmbedder, QuotaExhausted
 from app.http import HttpError, request_json
 from app.repository import PostgresRepository
-from ingest.normalize import embedding_text, from_arbeitnow, from_remotive, is_valid
+from ingest.normalize import embedding_text, from_arbeitnow, from_remotive, is_tech_role, is_valid
 
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
 TECH_CATEGORIES = ("software", "data", "devops", "sysadmin", "qa", "product", "machine learning", "ai")
@@ -50,25 +50,34 @@ def fetch_arbeitnow(pages: int) -> list[dict[str, Any]]:
         items = data.get("data", [])
         for item in items:
             row = from_arbeitnow(item)
-            if is_valid(row):
+            if is_valid(row) and is_tech_role(row):
                 rows[row["source_id"]] = row
-        log(f"  arbeitnow/page {page}: {len(items)}")
+        log(f"  arbeitnow/page {page}: {len(items)} fetched, {len(rows)} tech roles so far")
         if not items or not (data.get("links") or {}).get("next"):
             break
         time.sleep(1)
     return list(rows.values())
 
 
-def embed_missing(repo: PostgresRepository, embedder: GeminiEmbedder, batch: int = 100) -> int:
+def embed_missing(
+    repo: PostgresRepository, embedder: GeminiEmbedder, limit: int, batch: int = 20, pause: float = 0.0
+) -> int:
     total = 0
-    while True:
-        pending = repo.jobs_missing_embeddings(batch)
+    while total < limit:
+        if total and pause:
+            time.sleep(pause)
+        pending = repo.jobs_missing_embeddings(min(batch, limit - total))
         if not pending:
             return total
-        vectors = embedder.embed([embedding_text(r) for r in pending], "RETRIEVAL_DOCUMENT")
+        try:
+            vectors = embedder.embed([embedding_text(r) for r in pending], "RETRIEVAL_DOCUMENT")
+        except QuotaExhausted:
+            log(f"  embedding quota used up for today after {total}; the rest will be embedded on the next run")
+            return total
         repo.set_embeddings([(r["id"], v) for r, v in zip(pending, vectors, strict=True)])
         total += len(pending)
         log(f"  embedded {total}")
+    return total
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -77,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--arbeitnow-pages", type=int, default=4)
     parser.add_argument("--embed-only", action="store_true")
     parser.add_argument("--prune-days", type=int, default=0)
+    parser.add_argument("--max-embed", type=int, default=900)
+    parser.add_argument("--pause", type=float, default=13.0, help="seconds between embedding batches")
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -96,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
             log(f"Pruned {repo.prune_older_than(args.prune_days)} jobs older than {args.prune_days} days")
 
     log("Embedding new or changed jobs")
-    count = embed_missing(repo, embedder)
+    count = embed_missing(repo, embedder, args.max_embed, batch=20, pause=args.pause)
     stats = repo.stats()
     log(f"Done. Embedded {count} now; index has {stats['indexed']}/{stats['jobs']} jobs.")
     return 0

@@ -15,6 +15,65 @@ JOB_TYPES = {
     "internship": ("internship", "intern", "praktikum", "werkstudent", "working student"),
 }
 CURRENCIES = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR"}
+TECH_WORDS = (
+    "develop",
+    "engineer",
+    "software",
+    "programm",
+    "data",
+    "devops",
+    "sre",
+    "cloud",
+    "backend",
+    "back-end",
+    "frontend",
+    "front-end",
+    "full stack",
+    "fullstack",
+    "full-stack",
+    "web",
+    "mobile",
+    "ios",
+    "android",
+    "machine learning",
+    "ml ",
+    "ai ",
+    " ai",
+    "llm",
+    "python",
+    "java",
+    "javascript",
+    "typescript",
+    "react",
+    "node",
+    "golang",
+    " go ",
+    "rust",
+    "php",
+    ".net",
+    "c#",
+    "c++",
+    "qa",
+    "test",
+    "security",
+    "cyber",
+    "infrastructure",
+    "platform",
+    "architect",
+    "analyst",
+    "scientist",
+    "it-",
+    "it ",
+    "informatik",
+    "entwickler",
+    "administrator",
+    "sysadmin",
+    "database",
+    "sql",
+    "product manager",
+    "ux",
+    "ui ",
+)
 
 
 class _TextExtractor(HTMLParser):
@@ -158,6 +217,11 @@ def from_arbeitnow(item: dict[str, Any]) -> dict[str, Any]:
         "url": item.get("url") or "",
         "posted_at": parse_date(item.get("created_at")),
     }
+
+
+def is_tech_role(row: dict[str, Any]) -> bool:
+    text = f" {row.get('title', '')} {' '.join(row.get('tags') or [])} ".lower()
+    return any(word in text for word in TECH_WORDS)
 
 
 def is_valid(row: dict[str, Any]) -> bool:
