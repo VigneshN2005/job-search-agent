@@ -13,53 +13,27 @@ from app.models import AgentReply, ChatResponse
 from app.repository import Repository
 from app.tools import ToolBox
 
-SYSTEM_PROMPT = """You are Scout, a job-search assistant. Today is {today}.
-You help the user find real job postings from the job index through conversation.
+SYSTEM_PROMPT = """You are Scout, a job-search assistant. Today is {today}. Known user preferences: {prefs}.
 
 Rules:
-- Only recommend jobs returned by your tools in this conversation. Never invent jobs, companies, salaries or links.
-- Use search_jobs for anything described in words, filter_jobs for pure filter requests, get_job_details before
-  answering detailed questions about one job.
-- When the user states something lasting about themselves (skills, preferred location, remote, seniority,
-  salary floor, things to avoid), call save_preference for each item, then continue with the search.
-- If the request is too vague to search (for example just "hi"), ask one short question instead of searching.
-- Search once with a descriptive query before trying narrower variations.
-- Show the closest real matches even when none is perfect, and say what differs (level, location, stack).
-  Internships, working-student and trainee roles count as junior. Only say nothing fits when the results are
-  clearly unrelated to the request.
-- Keep answers short and concrete.
+- Recommend only jobs returned by your tools in this conversation. Never invent jobs, companies or links.
+- search_jobs for requests in words, filter_jobs for pure filters, get_job_details for questions about one job.
+- When the user states something lasting about themselves (skills, location, remote, level, salary floor,
+  things to avoid), call save_preference for it in the same step as your search.
+- If the request is too vague to search (e.g. "hi"), ask one short question instead.
+- One descriptive search is usually enough. Show the closest real matches even if imperfect and name the gap.
+  Internships, working-student and trainee roles count as junior.
 
-Known preferences for this user: {prefs}"""
+When you are done calling tools, reply with ONLY this JSON:
+{{"message": "1-3 short sentences, no job list", "picks": [{{"job_id": 123, "why": "one sentence"}}],
+"follow_up": "one short question or null"}}
+picks: up to 5 ids from tool results, best first; [] only if nothing was searched or all results are unrelated."""
 
-FINAL_PROMPT = """Write your final answer to the user's last message as a JSON object with exactly these keys:
+FINAL_PROMPT = """Answer the user's request using ONLY the candidate jobs below. Reply with ONLY a JSON object:
 {{"message": string, "picks": [{{"job_id": integer, "why": string}}], "follow_up": string or null}}
-
-- "message": 1-3 short sentences addressed to the user. Do not list the jobs in it.
-- "picks": up to 5 jobs, best first, chosen ONLY from these ids returned by tools: {ids}.
-  Prefer showing the closest matches over showing nothing: if a job fits only partly, still include it and
-  mention the gap in "why". Use [] only when no search was run or every result is clearly unrelated.
-  "why" is one sentence linking the job to what the user asked.
-- "follow_up": one short question that would improve the next search, or null.
-Return only the JSON object."""
-
-
-def _flatten(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    names: dict[str, str] = {}
-    out: list[dict[str, Any]] = []
-    for m in messages:
-        if m["role"] == "assistant" and m.get("tool_calls"):
-            calls = []
-            for c in m["tool_calls"]:
-                fn = c.get("function", {})
-                names[c.get("id", "")] = fn.get("name", "tool")
-                calls.append(f"{fn.get('name')}({fn.get('arguments')})")
-            out.append({"role": "assistant", "content": "Called tools: " + "; ".join(calls)})
-        elif m["role"] == "tool":
-            name = names.get(m.get("tool_call_id", ""), "tool")
-            out.append({"role": "system", "content": f"Result of {name}: {m['content']}"})
-        else:
-            out.append({"role": m["role"], "content": m.get("content") or ""})
-    return out
+"message": 1-3 short sentences, no job list. "picks": up to 5 of these ids, best first: {ids}. Include partial
+matches and name the gap in "why"; use [] only if every candidate is unrelated. "follow_up": one short question
+or null."""
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -100,11 +74,13 @@ class Agent:
 
         messages: list[dict[str, Any]] = [self._system(prefs), *history, {"role": "user", "content": user_message}]
         specs = tools.specs()
+        final_text = ""
 
         for _ in range(self.max_tool_rounds):
             reply = self.llm.chat(messages, tools=specs)
             calls = reply.get("tool_calls") or []
             if not calls:
+                final_text = reply.get("content") or ""
                 break
             messages.append({"role": "assistant", "content": reply.get("content") or "", "tool_calls": calls})
             for call in calls:
@@ -114,11 +90,13 @@ class Agent:
                     {
                         "role": "tool",
                         "tool_call_id": call.get("id", ""),
-                        "content": json.dumps(result, default=str, separators=(",", ":"))[:3500],
+                        "content": json.dumps(result, default=str, separators=(",", ":"))[:3000],
                     }
                 )
 
-        final, dropped = self._finalize(messages, tools)
+        final, dropped = self._parse(final_text, tools)
+        if final is None:
+            final, dropped = self._finalize(user_message, tools)
         jobs = [tools.seen[p.job_id] for p in final.picks]
 
         self.repo.append_message(session_id, "user", user_message)
@@ -137,19 +115,33 @@ class Agent:
             model=getattr(self.llm, "last_model", None),
         )
 
-    def _finalize(self, messages: list[dict[str, Any]], tools: ToolBox) -> tuple[AgentReply, list[int]]:
+    def _parse(self, text: str, tools: ToolBox) -> tuple[AgentReply | None, list[int]]:
+        try:
+            reply = AgentReply.model_validate(_extract_json(text))
+        except (json.JSONDecodeError, ValidationError):
+            return None, []
+        grounded, dropped = self._ground(reply, tools)
+        if tools.seen and not grounded.picks:
+            return None, []
+        return grounded, dropped
+
+    def _finalize(self, user_message: str, tools: ToolBox) -> tuple[AgentReply, list[int]]:
         ids = sorted(tools.seen)
-        prompt = {"role": "system", "content": FINAL_PROMPT.format(ids=ids or "none")}
-        convo = [*_flatten(messages), prompt]
-        error = ""
+        candidates = [j.brief() | {"snippet": j.snippet[:160]} for j in tools.seen.values()]
+        context = (
+            f"User request: {user_message}\nPreferences: {json.dumps(tools.prefs)}\n"
+            f"Candidate jobs: {json.dumps(candidates, separators=(',', ':'))}"
+        )
+        convo = [
+            {"role": "system", "content": FINAL_PROMPT.format(ids=ids or "none")},
+            {"role": "user", "content": context[:7000]},
+        ]
         for _ in range(2):
-            if error:
-                convo = [*convo, {"role": "system", "content": f"Your last output was invalid: {error}. Fix it."}]
             raw = self.llm.chat(convo, json_mode=True).get("content") or ""
             try:
                 reply = AgentReply.model_validate(_extract_json(raw))
             except (json.JSONDecodeError, ValidationError) as exc:
-                error = str(exc)[:300]
+                convo = [*convo, {"role": "user", "content": f"That output was invalid: {str(exc)[:200]}. Fix it."}]
                 continue
             return self._ground(reply, tools)
         fallback = AgentReply(
