@@ -134,7 +134,7 @@ class ToolBox:
             return {"error": f"job {args.job_id} not found", "jobs": []}
         job, description = found
         self.seen[job.id] = job
-        return {"job": job.brief() | {"url": job.url}, "description": description[:2500], "jobs": [job.brief()]}
+        return {"job": job.brief() | {"url": job.url}, "description": description[:1800], "jobs": [job.brief()]}
 
     def save_preference(self, args: SavePreferenceArgs) -> dict[str, Any]:
         value = args.value.strip()

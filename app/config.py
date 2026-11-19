@@ -33,7 +33,9 @@ def _int(name: str, default: int) -> int:
 
 @lru_cache
 def get_settings() -> Settings:
-    models = os.getenv("GROQ_MODELS", "openai/gpt-oss-120b,llama-3.3-70b-versatile")
+    models = os.getenv(
+        "GROQ_MODELS", "openai/gpt-oss-120b,llama-3.3-70b-versatile,openai/gpt-oss-20b,llama-3.1-8b-instant"
+    )
     return Settings(
         database_url=os.getenv("DATABASE_URL", ""),
         groq_api_key=os.getenv("GROQ_API_KEY", ""),
@@ -41,6 +43,6 @@ def get_settings() -> Settings:
         groq_models=tuple(m.strip() for m in models.split(",") if m.strip()),
         embedding_model=os.getenv("EMBEDDING_MODEL", "gemini-embedding-001"),
         embedding_dim=_int("EMBEDDING_DIM", 768),
-        history_limit=_int("HISTORY_LIMIT", 12),
-        max_tool_rounds=_int("MAX_TOOL_ROUNDS", 4),
+        history_limit=_int("HISTORY_LIMIT", 8),
+        max_tool_rounds=_int("MAX_TOOL_ROUNDS", 3),
     )

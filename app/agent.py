@@ -114,7 +114,7 @@ class Agent:
                     {
                         "role": "tool",
                         "tool_call_id": call.get("id", ""),
-                        "content": json.dumps(result, default=str)[:6000],
+                        "content": json.dumps(result, default=str, separators=(",", ":"))[:3500],
                     }
                 )
 

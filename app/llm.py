@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import time
 from typing import Any, Protocol
 
 from app.http import HttpError, request_json
@@ -19,6 +21,16 @@ class ChatModel(Protocol):
 
 
 RETIRED_HINTS = ("decommissioned", "model_not_found", "does not exist", "not supported")
+MAX_WAIT = 12.0
+
+
+def wait_hint(body: str) -> float | None:
+    match = re.search(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)(ms|s)", body)
+    if not match:
+        return None
+    minutes = float(match.group(1) or 0)
+    value = float(match.group(2))
+    return minutes * 60 + (value / 1000 if match.group(3) == "ms" else value)
 
 
 class GroqClient:
@@ -47,16 +59,22 @@ class GroqClient:
                 payload["tool_choice"] = "auto"
             if json_mode:
                 payload["response_format"] = {"type": "json_object"}
-            try:
-                data = request_json(self.url, payload, {"Authorization": f"Bearer {self.api_key}"}, timeout=60)
-            except HttpError as exc:
-                errors.append(f"{model}: {exc}")
-                body = exc.body.lower()
-                if any(h in body for h in RETIRED_HINTS) and model in self.models:
-                    self.models.remove(model)
-                if exc.status in (400, 404, 413, 429, 500, 502, 503) or exc.status == 0:
-                    continue
-                raise LLMError(str(exc)) from exc
-            self.last_model = model
-            return data["choices"][0]["message"]
+            for attempt in range(2):
+                try:
+                    data = request_json(self.url, payload, {"Authorization": f"Bearer {self.api_key}"}, timeout=60)
+                except HttpError as exc:
+                    body = exc.body.lower()
+                    if exc.status == 429 and attempt == 0:
+                        delay = wait_hint(exc.body)
+                        if delay is not None and delay <= MAX_WAIT:
+                            time.sleep(delay + 0.5)
+                            continue
+                    errors.append(f"{model}: {exc}")
+                    if any(h in body for h in RETIRED_HINTS) and model in self.models:
+                        self.models.remove(model)
+                    if exc.status in (400, 404, 413, 429, 500, 502, 503) or exc.status == 0:
+                        break
+                    raise LLMError(str(exc)) from exc
+                self.last_model = model
+                return data["choices"][0]["message"]
         raise LLMError("; ".join(errors) or "no model available")

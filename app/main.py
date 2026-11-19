@@ -79,7 +79,9 @@ def chat(body: ChatRequest) -> ChatResponse:
     try:
         return agent().run(session_id, body.message.strip())
     except LLMError as exc:
-        raise HTTPException(502, f"language model unavailable: {str(exc)[:160]}") from exc
+        raise HTTPException(
+            503, "The language model is busy right now (free-tier rate limit). Please try again in a minute."
+        ) from exc
     except ValueError as exc:
         raise HTTPException(500, str(exc)) from exc
 

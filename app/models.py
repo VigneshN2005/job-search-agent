@@ -32,9 +32,9 @@ class JobCard(BaseModel):
             "location": self.location or ("Remote" if self.remote else ""),
             "remote": self.remote,
             "job_type": self.job_type,
-            "tags": self.tags[:8],
+            "tags": self.tags[:6],
             "posted_at": (self.posted_at or "")[:10],
-            "snippet": self.snippet[:280],
+            "snippet": self.snippet[:180],
         }
         if self.salary_min or self.salary_max:
             data["salary"] = {
