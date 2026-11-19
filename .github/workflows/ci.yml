@@ -110,7 +110,8 @@ jobs:
       - name: Post-deploy health check
         if: steps.secrets.outputs.ready == 'true'
         env:
-          URL: ${{ steps.deploy.outputs.url }}
+          URL: ${{ vars.APP_URL || 'https://job-search-agent-teal-tau.vercel.app' }}
+          DEPLOYMENT: ${{ steps.deploy.outputs.url }}
         run: |
           for i in 1 2 3 4 5 6; do
             body=$(curl -fsS "$URL/api/health" || true)
@@ -118,7 +119,7 @@ jobs:
             if echo "$body" | grep -q '"database":true'; then
               stats=$(curl -fsS "$URL/api/stats")
               echo "$stats"
-              echo "Deployed and healthy: $URL" >> "$GITHUB_STEP_SUMMARY"
+              echo "Deployed $DEPLOYMENT, production healthy at $URL" >> "$GITHUB_STEP_SUMMARY"
               echo "Index: $stats" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
